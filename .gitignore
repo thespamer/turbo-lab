@@ -1,0 +1,31 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# turbo
+.turbo
+
+# build outputs
+dist
+build
+.next
+out
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# editor / OS
+.DS_Store
+.vscode
+.idea
+
+# vercel
+.vercel
