@@ -301,7 +301,7 @@ cat > package.json <<'EOF'
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json --noEmit",
     "lint": "echo lint ui ok"
   },
   "devDependencies": {
@@ -887,7 +887,7 @@ cat > packages/utils/package.json <<'EOF'
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json --noEmit",
     "lint": "echo lint utils ok"
   },
   "devDependencies": {
@@ -1016,12 +1016,13 @@ Não precisa rodar `pnpm init`. Apenas sobrescreva ou edite o arquivo existente.
 
 ---
 
-### Erro: não encontra `@repo/ui`
+### Erro: não encontra `@repo/ui` ou `@repo/utils`
 
 Rode:
 
 ```bash
 pnpm --filter web add @repo/ui@workspace:*
+pnpm --filter web add @repo/utils@workspace:*
 pnpm install
 ```
 
@@ -1029,6 +1030,77 @@ Depois:
 
 ```bash
 pnpm dev
+```
+
+---
+
+### Erro: `Local package.json exists, but node_modules missing`
+
+Esse erro normalmente aparece quando um novo pacote foi criado dentro de `packages/*`, mas ainda não houve um novo `pnpm install` na raiz.
+
+Na raiz do monorepo:
+
+```bash
+pnpm install
+```
+
+Depois teste o pacote isoladamente:
+
+```bash
+pnpm --filter @repo/utils build
+```
+
+E depois o build completo:
+
+```bash
+pnpm build
+```
+
+Se ainda falhar, limpe e reinstale:
+
+```bash
+rm -rf node_modules apps/*/node_modules packages/*/node_modules
+pnpm install
+pnpm build
+```
+
+---
+
+### Erro: TypeScript mostra a ajuda do `tsc` e falha no build
+
+Se o build mostrar a tela de ajuda do TypeScript e encerrar com erro, o script pode estar rodando sem apontar explicitamente para o `tsconfig.json`.
+
+Nos pacotes internos, use:
+
+```json
+"build": "tsc -p tsconfig.json --noEmit"
+```
+
+Exemplo em `packages/utils/package.json`:
+
+```json
+{
+  "name": "@repo/utils",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo lint utils ok"
+  },
+  "devDependencies": {
+    "typescript": "latest"
+  }
+}
+```
+
+Depois rode:
+
+```bash
+pnpm install
+pnpm --filter @repo/utils build
+pnpm build
 ```
 
 ---
@@ -1161,4 +1233,29 @@ Depois deste lab, estude:
 8. Testes com Vitest
 9. CI/CD com GitHub Actions
 10. Versionamento de pacotes com Changesets
+
+
+---
+
+## 26. Correções incorporadas nesta versão
+
+Esta versão já incorpora os ajustes feitos durante o laboratório:
+
+- Uso de `pnpm add -D turbo typescript -w` na raiz do workspace.
+- Correção do campo `packageManager` para versão fixa, por exemplo `pnpm@10.23.0`.
+- Criação correta do `.gitignore`.
+- Procedimento para remover do GitHub arquivos que já foram commitados indevidamente.
+- Uso de `workspace:*` para dependências internas.
+- Correção dos scripts de build dos pacotes internos para:
+
+```json
+"build": "tsc -p tsconfig.json --noEmit"
+```
+
+- Troubleshooting para `node_modules missing`.
+- Teste isolado de pacote com:
+
+```bash
+pnpm --filter @repo/utils build
+```
 
