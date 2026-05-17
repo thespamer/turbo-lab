@@ -1,0 +1,5 @@
+
+
+> @repo/ui@1.0.0 build /root/labs/meu-monorepo-pnpm-turbo/packages/ui
+> tsc --noEmit
+
