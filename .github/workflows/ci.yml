@@ -2,18 +2,165 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - develop
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
 
 jobs:
-  build:
+  validate:
+    name: Validate repository
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
+      - name: Validate required files
+        run: |
+          test -f package.json
+          test -f pnpm-lock.yaml
+          test -f pnpm-workspace.yaml
+          test -f turbo.json
+          test -f .gitignore
+          test -d apps
+          test -d packages
+
+      - name: Check package manager field
+        run: |
+          node -e "
+          const pkg = require('./package.json');
+          if (!pkg.packageManager) {
+            console.error('Missing packageManager field in package.json');
+            process.exit(1);
+          }
+          if (!pkg.packageManager.startsWith('pnpm@')) {
+            console.error('packageManager must use pnpm, example: pnpm@9.12.3');
+            process.exit(1);
+          }
+          console.log('Using', pkg.packageManager);
+          "
+
+      - name: Check workspace config
+        run: |
+          grep -q 'apps/\*' pnpm-workspace.yaml
+          grep -q 'packages/\*' pnpm-workspace.yaml
+
+  security-secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    name: Install, audit, lint and build
+    runs-on: ubuntu-latest
+    needs:
+      - validate
+      - security-secrets
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 20
+          - 22
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm from packageManager
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Show tool versions
+        run: |
+          node -v
+          pnpm -v
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate pnpm lockfile
+        run: |
+          test -f pnpm-lock.yaml
+          pnpm install --frozen-lockfile --offline
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level moderate
+        continue-on-error: true
+
+      - name: Check package list
+        run: pnpm list --depth 0 -r
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build packages first
+        run: |
+          pnpm --filter @repo/ui build
+          pnpm --filter @repo/utils build
+
+      - name: Build monorepo
+        run: pnpm build
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-node-${{ matrix.node-version }}
+          path: |
+            apps/**/dist
+            apps/**/.next
+            packages/**/dist
+          if-no-files-found: ignore
+
+  codeql:
+    name: CodeQL analysis
+    runs-on: ubuntu-latest
+    needs: validate
+
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended,security-and-quality
+
+      - name: Setup pnpm from packageManager
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
@@ -25,5 +172,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build for analysis
         run: pnpm build
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
